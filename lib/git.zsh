@@ -2,7 +2,7 @@
 function git_prompt_info() {
   ref=$(git symbolic-ref HEAD 2> /dev/null) || \
   ref=$(git rev-parse --short HEAD 2> /dev/null) || return
-  echo "$ZSH_THEME_GIT_PROMPT_PREFIX${ref#refs/heads/}$(parse_git_dirty)$ZSH_THEME_GIT_PROMPT_SUFFIX"
+  echo "$ZSH_THEME_GIT_PROMPT_PREFIX${ref#refs/heads/}$(parse_git_dirty)$(parse_git_stash)$ZSH_THEME_GIT_PROMPT_SUFFIX"
 }
 
 
@@ -22,6 +22,15 @@ parse_git_dirty() {
       echo "$ZSH_THEME_GIT_PROMPT_CLEAN"
     fi  
   fi  
+}
+
+# Checks if working tree contains stash(es)
+parse_git_stash() {
+  if [[ -n $(git stash list 2> /dev/null) ]]; then
+    echo "$ZSH_THEME_GIT_PROMPT_HAVE_STASH"
+  else
+    echo "$ZSH_THEME_GIT_PROMPT_HAVE_NO_STASH"
+  fi
 }
 
 # get the difference between the local and remote branches
