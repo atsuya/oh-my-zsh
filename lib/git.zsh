@@ -8,6 +8,14 @@ function git_prompt_info() {
   fi
 }
 
+parse_git_stash() {
+  if [[ -n $(git stash list 2> /dev/null) ]]; then
+    echo "$ZSH_THEME_GIT_PROMPT_STASH"
+  else
+    echo "$ZSH_THEME_GIT_PROMPT_NOSTASH"
+  fi
+}
+
 # Checks if working tree is dirty
 function parse_git_dirty() {
   local STATUS=''
