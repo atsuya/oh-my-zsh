@@ -7,6 +7,7 @@ function setup_using_base_dir() {
         fzfdirs=(
           "${HOME}/.fzf"
           "${HOME}/.nix-profile/share/fzf"
+          "${XDG_DATA_HOME:-$HOME/.local/share}/fzf"
           "/usr/local/opt/fzf"
           "/usr/share/fzf"
           "/usr/local/share/examples/fzf"
@@ -19,7 +20,9 @@ function setup_using_base_dir() {
         done
 
         if [[ -z "${fzf_base}" ]]; then
-            if (( ${+commands[brew]} )) && dir="$(brew --prefix fzf 2>/dev/null)"; then
+            if (( ${+commands[fzf-share]} )) && dir="$(fzf-share)" && [[ -d "${dir}" ]]; then
+                fzf_base="${dir}"
+            elif (( ${+commands[brew]} )) && dir="$(brew --prefix fzf 2>/dev/null)"; then
                 if [[ -d "${dir}" ]]; then
                     fzf_base="${dir}"
                 fi
