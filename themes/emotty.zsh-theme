@@ -11,7 +11,7 @@
 #
 # There are pre-defined different emoji sets to choose from, e.g.:
 # emoji, stellar, floral, zodiac, love (see emotty plugin).
-# 
+#
 # To choose a different emotty set than the default (emoji)
 # % export emotty_set=nature
 #
@@ -45,6 +45,16 @@
 # displayed in red instead of the branch name and a special action indicator
 # is shown (see vcs_action_glyph variable, default: chevron).
 # ------------------------------------------------------------------------------
+
+(( ${+functions[emotty]} )) || {
+  echo "error: the emotty theme requires the emotty plugin" >&2
+  return 1
+}
+
+(( ${+emoji} )) || {
+  echo "error: the emotty theme requires the emoji plugin" >&2
+  return 1
+}
 
 user_prompt="$(emotty)"
 root_prompt="$emoji[skull]"
@@ -85,7 +95,7 @@ zstyle ':vcs_info:*' stagedstr "${green}${vcs_staged_glyph}"
 # %(k|f) reset (back|fore)ground color
 zstyle ':vcs_info:*' max-exports 3
 zstyle ':vcs_info:*' nvcsformats "${prompt_glyph}" '%3~' ''
-zstyle ':vcs_info:*' formats "${yellow}%u%c%b${vcs_branch_glyph}%f" '%S|' "$FX[bold]%r$FX[no-bold]" 
+zstyle ':vcs_info:*' formats "${yellow}%u%c%b${vcs_branch_glyph}%f" '%S|' "$FX[bold]%r$FX[no-bold]"
 zstyle ':vcs_info:*' actionformats "${red}%K{white}%a${vcs_action_glyph}%k%f" '%S|' "$FX[bold]%r$FX[no-bold]"
 
 red_if_root="%(!.%F{red}.)"

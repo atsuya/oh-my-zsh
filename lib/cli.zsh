@@ -11,7 +11,7 @@ function omz {
 
   # Subcommand functions start with _ so that they don't
   # appear as completion entries when looking for `omz`
-  (( $+functions[_omz::$command] )) || {
+  (( ${+functions[_omz::$command]} )) || {
     _omz::help
     return 1
   }
@@ -241,21 +241,29 @@ function _omz::plugin::disable {
 
   # Remove plugins substitution awk script
   local awk_subst_plugins="\
-  gsub(/\s+(${(j:|:)dis_plugins})/, \"\") # with spaces before
-  gsub(/(${(j:|:)dis_plugins})\s+/, \"\") # with spaces after
-  gsub(/\((${(j:|:)dis_plugins})\)/, \"\") # without spaces (only plugin)
+  gsub(/[ \t]+(${(j:|:)dis_plugins})[ \t]+/, \" \") # with spaces before or after
+  gsub(/[ \t]+(${(j:|:)dis_plugins})$/, \"\")       # with spaces before and EOL
+  gsub(/^(${(j:|:)dis_plugins})[ \t]+/, \"\")       # with BOL and spaces after
+
+  gsub(/\((${(j:|:)dis_plugins})[ \t]+/, \"(\")     # with parenthesis before and spaces after
+  gsub(/[ \t]+(${(j:|:)dis_plugins})\)/, \")\")     # with spaces before or parenthesis after
+  gsub(/\((${(j:|:)dis_plugins})\)/, \"()\")        # with only parentheses
+
+  gsub(/^(${(j:|:)dis_plugins})\)/, \")\")          # with BOL and closing parenthesis
+  gsub(/\((${(j:|:)dis_plugins})$/, \"(\")          # with opening parenthesis and EOL
 "
+
   # Disable plugins awk script
   local awk_script="
 # if plugins=() is in oneline form, substitute disabled plugins and go to next line
-/^\s*plugins=\([^#]+\).*\$/ {
+/^[ \t]*plugins=\([^#]+\).*\$/ {
   $awk_subst_plugins
   print \$0
   next
 }
 
 # if plugins=() is in multiline form, enable multi flag and disable plugins if they're there
-/^\s*plugins=\(/ {
+/^[ \t]*plugins=\(/ {
   multi=1
   $awk_subst_plugins
   print \$0
@@ -280,9 +288,10 @@ multi == 1 && length(\$0) > 0 {
 "
 
   local zdot="${ZDOTDIR:-$HOME}"
-  awk "$awk_script" "$zdot/.zshrc" > "$zdot/.zshrc.new" \
-  && command mv -f "$zdot/.zshrc" "$zdot/.zshrc.bck" \
-  && command mv -f "$zdot/.zshrc.new" "$zdot/.zshrc"
+  local zshrc="${${:-"${zdot}/.zshrc"}:A}"
+  awk "$awk_script" "$zshrc" > "$zdot/.zshrc.new" \
+  && command cp -f "$zshrc" "$zdot/.zshrc.bck" \
+  && command mv -f "$zdot/.zshrc.new" "$zshrc"
 
   # Exit if the new .zshrc file wasn't created correctly
   [[ $? -eq 0 ]] || {
@@ -294,8 +303,7 @@ multi == 1 && length(\$0) > 0 {
   # Exit if the new .zshrc file has syntax errors
   if ! command zsh -n "$zdot/.zshrc"; then
     _omz::log error "broken syntax in '"${zdot/#$HOME/\~}/.zshrc"'. Rolling back changes..."
-    command mv -f "$zdot/.zshrc" "$zdot/.zshrc.new"
-    command mv -f "$zdot/.zshrc.bck" "$zdot/.zshrc"
+    command mv -f "$zdot/.zshrc.bck" "$zshrc"
     return 1
   fi
 
@@ -330,33 +338,54 @@ function _omz::plugin::enable {
   # Enable plugins awk script
   local awk_script="
 # if plugins=() is in oneline form, substitute ) with new plugins and go to the next line
-/^\s*plugins=\([^#]+\).*\$/ {
+/^[ \t]*plugins=\([^#]+\).*\$/ {
   sub(/\)/, \" $add_plugins&\")
   print \$0
   next
 }
 
-# if plugins=() is in multiline form, enable multi flag
-/^\s*plugins=\(/ {
+# if plugins=() is in multiline form, enable multi flag and indent by default with 2 spaces
+/^[ \t]*plugins=\(/ {
   multi=1
+  indent=\"  \"
+  print \$0
+  next
 }
 
 # if multi flag is enabled and we find a valid closing parenthesis,
-# add new plugins and disable multi flag
+# add new plugins with proper indent and disable multi flag
 multi == 1 && /^[^#]*\)/ {
   multi=0
-  sub(/\)/, \" $add_plugins&\")
+  split(\"$add_plugins\",p,\" \")
+  for (i in p) {
+    print indent p[i]
+  }
   print \$0
   next
+}
+
+# if multi flag is enabled and we didnt find a closing parenthesis,
+# get the indentation level to match when adding plugins
+multi == 1 && /^[^#]*/ {
+  indent=\"\"
+  for (i = 1; i <= length(\$0); i++) {
+    char=substr(\$0, i, 1)
+    if (char == \" \" || char == \"\t\") {
+      indent = indent char
+    } else {
+      break
+    }
+  }
 }
 
 { print \$0 }
 "
 
   local zdot="${ZDOTDIR:-$HOME}"
-  awk "$awk_script" "$zdot/.zshrc" > "$zdot/.zshrc.new" \
-  && command mv -f "$zdot/.zshrc" "$zdot/.zshrc.bck" \
-  && command mv -f "$zdot/.zshrc.new" "$zdot/.zshrc"
+  local zshrc="${${:-"${zdot}/.zshrc"}:A}"
+  awk "$awk_script" "$zshrc" > "$zdot/.zshrc.new" \
+  && command cp -f "$zshrc" "$zdot/.zshrc.bck" \
+  && command mv -f "$zdot/.zshrc.new" "$zshrc"
 
   # Exit if the new .zshrc file wasn't created correctly
   [[ $? -eq 0 ]] || {
@@ -368,8 +397,7 @@ multi == 1 && /^[^#]*\)/ {
   # Exit if the new .zshrc file has syntax errors
   if ! command zsh -n "$zdot/.zshrc"; then
     _omz::log error "broken syntax in '"${zdot/#$HOME/\~}/.zshrc"'. Rolling back changes..."
-    command mv -f "$zdot/.zshrc" "$zdot/.zshrc.new"
-    command mv -f "$zdot/.zshrc.bck" "$zdot/.zshrc"
+    command mv -f "$zdot/.zshrc.bck" "$zshrc"
     return 1
   fi
 
@@ -389,8 +417,23 @@ function _omz::plugin::info {
   local readme
   for readme in "$ZSH_CUSTOM/plugins/$1/README.md" "$ZSH/plugins/$1/README.md"; do
     if [[ -f "$readme" ]]; then
-      (( ${+commands[less]} )) && less "$readme" || cat "$readme"
-      return 0
+      # If being piped, just cat the README
+      if [[ ! -t 1 ]]; then
+        cat "$readme"
+        return $?
+      fi
+
+      # Enrich the README display depending on the tools we have
+      # - glow: https://github.com/charmbracelet/glow
+      # - bat: https://github.com/sharkdp/bat
+      # - less: typical pager command
+      case 1 in
+        ${+commands[glow]}) glow -p "$readme" ;;
+        ${+commands[bat]}) bat -l md --style plain "$readme" ;;
+        ${+commands[less]}) less "$readme" ;;
+        *) cat "$readme" ;;
+      esac
+      return $?
     fi
   done
 
@@ -416,14 +459,14 @@ function _omz::plugin::list {
 
   if (( ${#custom_plugins} )); then
     print -P "%U%BCustom plugins%b%u:"
-    print -l ${(q-)custom_plugins} | column -x
+    print -lac ${(q-)custom_plugins}
   fi
 
   if (( ${#builtin_plugins} )); then
     (( ${#custom_plugins} )) && echo # add a line of separation
 
     print -P "%U%BBuilt-in plugins%b%u:"
-    print -l ${(q-)builtin_plugins} | column -x
+    print -lac ${(q-)builtin_plugins}
   fi
 }
 
@@ -448,7 +491,7 @@ function _omz::plugin::load {
     if [[ ! -f "$base/_$plugin" && ! -f "$base/$plugin.plugin.zsh" ]]; then
       _omz::log warn "'$plugin' is not a valid plugin"
       continue
-    # It it is a valid plugin, add its directory to $fpath unless it is already there
+    # It is a valid plugin, add its directory to $fpath unless it is already there
     elif (( ! ${fpath[(Ie)$base]} )); then
       fpath=("$base" $fpath)
     fi
@@ -573,12 +616,27 @@ function _omz::pr::test {
 
     # Rebase pull request branch against the current master
     _omz::log info "rebasing PR #$1..."
-    command git rebase master ohmyzsh/pull-$1 || {
-      command git rebase --abort &>/dev/null
-      _omz::log warn "could not rebase PR #$1 on top of master."
-      _omz::log warn "you might not see the latest stable changes."
-      _omz::log info "run \`zsh\` to test the changes."
-      return 1
+    local ret gpgsign
+    {
+      # Back up commit.gpgsign setting: use --local to get the current repository
+      # setting, not the global one. If --local is not a known option, it will
+      # exit with a 129 status code.
+      gpgsign=$(command git config --local commit.gpgsign 2>/dev/null) || ret=$?
+      [[ $ret -ne 129 ]] || gpgsign=$(command git config commit.gpgsign 2>/dev/null)
+      command git config commit.gpgsign false
+
+      command git rebase master ohmyzsh/pull-$1 || {
+        command git rebase --abort &>/dev/null
+        _omz::log warn "could not rebase PR #$1 on top of master."
+        _omz::log warn "you might not see the latest stable changes."
+        _omz::log info "run \`zsh\` to test the changes."
+        return 1
+      }
+    } always {
+      case "$gpgsign" in
+      "") command git config --unset commit.gpgsign ;;
+      *) command git config commit.gpgsign "$gpgsign" ;;
+      esac
     }
 
     _omz::log info "fetch of PR #${1} successful."
@@ -659,13 +717,13 @@ function _omz::theme::list {
   # Print custom themes if there are any
   if (( ${#custom_themes} )); then
     print -P "%U%BCustom themes%b%u:"
-    print -l ${(q-)custom_themes} | column -x
+    print -lac ${(q-)custom_themes}
     echo
   fi
 
   # Print built-in themes
   print -P "%U%BBuilt-in themes%b%u:"
-  print -l ${(q-)builtin_themes} | column -x
+  print -lac ${(q-)builtin_themes}
 }
 
 function _omz::theme::set {
@@ -684,9 +742,9 @@ function _omz::theme::set {
 
   # Enable theme in .zshrc
   local awk_script='
-!set && /^\s*ZSH_THEME=[^#]+.*$/ {
+!set && /^[ \t]*ZSH_THEME=[^#]+.*$/ {
   set=1
-  sub(/^\s*ZSH_THEME=[^#]+.*$/, "ZSH_THEME=\"'$1'\" # set by `omz`")
+  sub(/^[ \t]*ZSH_THEME=[^#]+.*$/, "ZSH_THEME=\"'$1'\" # set by `omz`")
   print $0
   next
 }
@@ -700,7 +758,8 @@ END {
 '
 
   local zdot="${ZDOTDIR:-$HOME}"
-  awk "$awk_script" "$zdot/.zshrc" > "$zdot/.zshrc.new" \
+  local zshrc="${${:-"${zdot}/.zshrc"}:A}"
+  awk "$awk_script" "$zshrc" > "$zdot/.zshrc.new" \
   || {
     # Prepend ZSH_THEME= line to .zshrc if it doesn't exist
     cat <<EOF
@@ -709,8 +768,8 @@ ZSH_THEME="$1" # set by \`omz\`
 EOF
     cat "$zdot/.zshrc"
   } > "$zdot/.zshrc.new" \
-  && command mv -f "$zdot/.zshrc" "$zdot/.zshrc.bck" \
-  && command mv -f "$zdot/.zshrc.new" "$zdot/.zshrc"
+  && command cp -f "$zshrc" "$zdot/.zshrc.bck" \
+  && command mv -f "$zdot/.zshrc.new" "$zshrc"
 
   # Exit if the new .zshrc file wasn't created correctly
   [[ $? -eq 0 ]] || {
@@ -722,8 +781,7 @@ EOF
   # Exit if the new .zshrc file has syntax errors
   if ! command zsh -n "$zdot/.zshrc"; then
     _omz::log error "broken syntax in '"${zdot/#$HOME/\~}/.zshrc"'. Rolling back changes..."
-    command mv -f "$zdot/.zshrc" "$zdot/.zshrc.new"
-    command mv -f "$zdot/.zshrc.bck" "$zdot/.zshrc"
+    command mv -f "$zdot/.zshrc.bck" "$zshrc"
     return 1
   fi
 
@@ -758,13 +816,24 @@ function _omz::theme::use {
 }
 
 function _omz::update {
-  local last_commit=$(builtin cd -q "$ZSH"; git rev-parse HEAD)
+  # Check if git command is available
+  (( $+commands[git] )) || {
+    _omz::log error "git is not installed. Aborting..."
+    return 1
+  }
+
+  local last_commit=$(builtin cd -q "$ZSH"; git rev-parse HEAD 2>/dev/null)
+  [[ $? -eq 0 ]] || {
+    _omz::log error "\`$ZSH\` is not a git directory. Aborting..."
+    return 1
+  }
 
   # Run update script
+  zstyle -s ':omz:update' verbose verbose_mode || verbose_mode=default
   if [[ "$1" != --unattended ]]; then
-    ZSH="$ZSH" command zsh -f "$ZSH/tools/upgrade.sh" --interactive || return $?
+    ZSH="$ZSH" command zsh -f "$ZSH/tools/upgrade.sh" -i -v $verbose_mode || return $?
   else
-    ZSH="$ZSH" command zsh -f "$ZSH/tools/upgrade.sh" || return $?
+    ZSH="$ZSH" command zsh -f "$ZSH/tools/upgrade.sh" -v $verbose_mode || return $?
   fi
 
   # Update last updated file
